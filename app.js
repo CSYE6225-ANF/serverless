@@ -1,15 +1,38 @@
+const AWS = require('aws-sdk');
 const Mailgun = require('mailgun.js');
 const formData = require('form-data');
+
+// AWS SDK Configuration for Secrets Manager
+const secretsManager = new AWS.SecretsManager();
 
 // Import database models
 const User = require('./models/user.model');
 const EmailLog = require('./models/email.model');
 
-const DOMAIN = process.env.DOMAIN;
-const API_KEY = process.env.MAILGUN_API_KEY; // Access API key from environment variable
+// const DOMAIN = process.env.DOMAIN;
+// const API_KEY = process.env.MAILGUN_API_KEY; // Access API key from environment variable
+
+// Helper function to retrieve secrets from Secrets Manager
+const getSecrets = async (secretName) => {
+    try {
+        const data = await secretsManager.getSecretValue({ SecretId: secretName }).promise();
+        if ('SecretString' in data) {
+            return JSON.parse(data.SecretString);
+        }
+        throw new Error("Secret is not in string format.");
+    } catch (error) {
+        console.error(`Failed to retrieve secret: ${secretName}`, error);
+        throw error;
+    }
+};
 
 // Lambda function handler
 exports.handler = async (event) => {
+
+    // Retrieve email service credentials from Secrets Manager
+    const secretName = "email_credentials_demo"; // Ensure this matches the name in Terraform
+    const credentials = await getSecrets(secretName);
+    const { api_key: API_KEY, domain: DOMAIN } = credentials;
 
     const mailgun = new Mailgun(formData);
     const mg = mailgun.client({ username: 'api', key: API_KEY });
@@ -20,7 +43,7 @@ exports.handler = async (event) => {
     const { firstName, lastName, email, verification_token } = payload;
 
     // Construct the verification URL with the existing token
-    const verificationUrl = `http://${DOMAIN}/v1/user/verify-email?token=${verification_token}`;
+    const verificationUrl = `https://${DOMAIN}/v1/user/verify-email?token=${verification_token}`;
 
     let emailStatus = 'Pending';
     let errorMessage = '';
@@ -36,7 +59,7 @@ exports.handler = async (event) => {
                 <p>This link will expire in 2 minutes.</p>
                 <p>If you did not request this verification, please ignore this email.</p>
                 <br>
-                <p>Best Regards,<br>Your Company Name</p>
+                <p>Best Regards,<br>ANF_CSYE6225</p>
             </body>
         </html>
     `;
